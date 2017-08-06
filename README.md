@@ -40,8 +40,11 @@ To visualize, what CNN has learned, one can highlight parts of image, which infl
 Jupyter notebooks for training and evaluating are gathered in ```notebooks``` subfolder:
 
 ```net.ipynb``` - CNN training
+
 ```evaluate.ipynb``` - CNN evaluation on test data
+
 ```progress.ipynb``` - visualize current loss
+
 ```attention.ipynb``` - visualize most influential parts of image
 
 ## How to launch autonomous driving
