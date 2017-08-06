@@ -35,6 +35,8 @@ for key, value in tqdm(db.RangeIter()):
     #for j in range(l):
     #   print datum.float_data.pop()
 
+    # 13 numbers are described in http://deepdriving.cs.princeton.edu/paper.pdf, "fast" mysteriously was not described, but fast = 1 seems to indicate that a road is making an abrupt turn now, and the desired speed should be decreased.
+
     fast = datum.float_data.pop()
 
     dist_RR = datum.float_data.pop()
