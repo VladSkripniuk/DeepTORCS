@@ -57,10 +57,10 @@ After that, one should come into tensorflow folder, and build corresponding vers
 
 ```bazel build --config=opt --config=cuda //tensorflow/cc/driver:drive_3lane```
 
-Next, one should launch ```torcs```, configure players, start quick race and remove extra elements from the screen in accordance to README of the original DeepDriving.
+Next, one should launch ```torcs```, configure players, start quick race and remove extra elements from the screen in accordance to [README](https://github.com/skripniuk/DeepTORCS/blob/master/Readme) of the original DeepDriving.
 
 Finally, driver can be launched with 
 
 ```./bazel-bin/tensorflow/cc/driver/drive_3lane```
 
-and started in accordance to README of the original DeepDriving.
+and started in accordance to [README](https://github.com/skripniuk/DeepTORCS/blob/master/Readme) of the original DeepDriving.
