@@ -12,32 +12,29 @@
 //
 ////////////////////////////////////////////////
 
-#include <glog/logging.h>
-#include <leveldb/db.h>
-#include <leveldb/write_batch.h>
-
 #include <algorithm>
 #include <fstream>  // NOLINT(readability/streams)
 #include <string>
 #include <utility>
 #include <vector>
+#include <utility>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/highgui/highgui_c.h>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/imgproc/imgproc_c.h>
+#include <opencv2/opencv.hpp>
 
 #include <unistd.h>  
 #include <stdlib.h>  
 #include <stdio.h>  
 #include <sys/shm.h>
-#include <cuda_runtime.h>
 #include <cstring>
 
-#include "caffe/caffe.hpp"
-#include "caffe/proto/caffe.pb.h"
-#include "caffe/util/io.hpp"
+#include "tensorflow/core/public/session.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 #define image_width 640
 #define image_height 480
@@ -46,8 +43,11 @@
 #define semantic_width 320
 #define semantic_height 660
 
-using namespace caffe;  // NOLINT(build/namespaces)
+using namespace tensorflow;
 using std::string;
+using std::vector;
+using std::pair;
+using namespace cv;
 
 struct shared_use_st  
 {  
@@ -83,7 +83,6 @@ struct shared_use_st
 };
 
 int main(int argc, char** argv) {
-    ::google::InitGoogleLogging(argv[0]);
 
     ////////////////////// set up memory sharing
     void *shm = NULL;
@@ -141,8 +140,8 @@ int main(int argc, char** argv) {
     IplImage* resizeRGB=cvCreateImage(cvSize(resize_width,resize_height),IPL_DEPTH_8U,3);
     IplImage* semanticRGB=cvCreateImage(cvSize(semantic_width,semantic_height),IPL_DEPTH_8U,3);
     IplImage* error_bar=cvCreateImage(cvSize(640,180),IPL_DEPTH_8U,3);
-    IplImage* legend=cvLoadImage("../torcs/Legend6.png");
-    IplImage* background=cvLoadImage("../torcs/semantic_background_2lane.png");
+    IplImage* legend=cvLoadImage("/shared/pictures/Legend6.png");
+    IplImage* background=cvLoadImage("/shared/pictures/semantic_background_3lane.png");
     cvNamedWindow("Semantic Visualization",1);
     cvNamedWindow("Image from leveldb",1);
     cvNamedWindow("Error Bar",1);
@@ -152,54 +151,53 @@ int main(int argc, char** argv) {
     cvInitFont(&font, CV_FONT_HERSHEY_COMPLEX, 1, 1, 1, 2, 8);  
     char vi_buf[4];
     ////////////////////// END set up opencv
-
-    ////////////////////// set up leveldb  
-    leveldb::Options options;
-    options.error_if_exists = false;
-    options.create_if_missing = true;
-    options.write_buffer_size = 268435456;
-    options.max_open_files = 100;
-
-    leveldb::DB* db;
-    LOG(INFO) << "Opening leveldb: Current_State_1F";
-    leveldb::Status status = leveldb::DB::Open(options, "Current_State_1F", &db);
-    CHECK(status.ok()) << "Failed to open leveldb: Current_State_1F";
-
-    Datum datum;
-    string value;
     
-    const int kMaxKeyLength = 256;
-    char key_cstr[kMaxKeyLength];
-
-    leveldb::WriteBatch* batch = new leveldb::WriteBatch();
-    ////////////////////// END set up leveldb
-    
-    ////////////////////// set up Caffe
-    if (argc < 3) {
-      LOG(ERROR) << "test_net net_proto pretrained_net_proto iterations " << "[CPU/GPU]";
-      return 0;
+    ////////////////////// set up Tensorflow
+    // Initialize a tensorflow session
+    Session* session;
+    Status status = NewSession(SessionOptions(), &session);
+    if (!status.ok()) {
+        std::cout << status.ToString() << "\n";
+        return 1;
     }
 
-    cudaSetDevice(0);
-    Caffe::set_phase(Caffe::TEST);
-
-    if (argc == 4 && strcmp(argv[3], "GPU") == 0) {
-      LOG(ERROR) << "Using GPU";
-      Caffe::set_mode(Caffe::GPU);
-    } else {
-      LOG(ERROR) << "Using CPU";
-      Caffe::set_mode(Caffe::CPU);
+    // set up model path
+    const string pathToGraph = "/shared/model/139999.ckpt.meta";
+    const string checkpointPath = "/shared/model/139999.ckpt";
+    
+    std::cout << "loading graph ..." << "\n";
+    
+    // Read in the protobuf graph we exported
+    MetaGraphDef graph_def;
+    status = ReadBinaryProto(Env::Default(), pathToGraph, &graph_def);
+    if (!status.ok()) {
+        std::cout << "Error reading graph definition from " + pathToGraph + ": " + status.ToString() << "\n";
+    }
+    
+    // Add the graph to the session
+    status = session->Create(graph_def.graph_def());
+    if (!status.ok()) {
+        std::cout << "Error creating graph: " + status.ToString() << "\n";
     }
 
-    NetParameter test_net_param;
-    ReadProtoFromTextFile(argv[1], &test_net_param);
-    Net<float> caffe_test_net(test_net_param, db);
-    NetParameter trained_net_param;
-    ReadProtoFromBinaryFile(argv[2], &trained_net_param);
-    caffe_test_net.CopyTrainedLayersFrom(trained_net_param);
+    std::cout << "finished loading graph" << "\n";
 
-    vector<Blob<float>*> dummy_blob_input_vec;
-    ////////////////////// END set up Caffe
+    std::cout << "loading weights ..." << "\n";
+
+    // Read weights from the saved checkpoint
+    Tensor checkpointPathTensor(DT_STRING, TensorShape());
+    checkpointPathTensor.scalar<std::string>()() = checkpointPath;
+    status = session->Run(
+            {{ graph_def.saver_def().filename_tensor_name(), checkpointPathTensor },},
+            {},
+            {graph_def.saver_def().restore_op_name()},
+            nullptr);
+    if (!status.ok()) {
+        std::cout << "Error loading checkpoint from " + checkpointPath + ": " + status.ToString() << "\n";
+    }
+
+    std::cout << "finished loading weights" << "\n";
+    ////////////////////// END set up Tensorflow
 
     ////////////////////// cnn output parameters
     float true_angle;
@@ -289,7 +287,7 @@ int main(int argc, char** argv) {
     while (1) {
 
         if (shared->written == 1) {  // the new image data is ready to be read
-
+            // RGB to BGR (since OpenCV uses BGR channel order by default)
             for (int h = 0; h < image_height; h++) {
                for (int w = 0; w < image_width; w++) {
                   screenRGB->imageData[(h*image_width+w)*3+2]=shared->data[((image_height-h-1)*image_width+w)*3+0];
@@ -299,6 +297,9 @@ int main(int argc, char** argv) {
             }
 
             cvResize(screenRGB,resizeRGB);
+
+            //cvSaveImage("/shared/test.jpg", resizeRGB);
+            //return 0;
 
             /////////////////////////////// get the groundtruth value at the same time when we extract the image
             true_angle = shared->angle;           
@@ -321,61 +322,59 @@ int main(int argc, char** argv) {
             true_toMarking_RR = shared->toMarking_RR;
             /////////////////////////////// END get the groundtruth value at the same time when we extract the image
 
-            ///////////////////////////// set caffe input
-            datum.set_channels(3);
-            datum.set_height(resize_height);
-            datum.set_width(resize_width);
-            datum.set_label(0); 
-            datum.clear_data();
-            datum.clear_float_data();
-            string* datum_string = datum.mutable_data();
+            /////////////////////////////// setup tensorflow input
+            // Setup inputs and outputs:
+            Tensor x(DT_FLOAT, TensorShape({1, 210, 280, 3}));
+            auto dst = x.flat<float>().data();
 
-            for (int c = 0; c < 3; ++c) {
-              for (int h = 0; h < resize_height; ++h) {
-                for (int w = 0; w < resize_width; ++w) {
-                  datum_string->push_back(static_cast<char>(resizeRGB->imageData[(h*resize_width+w)*3+c]));
-                }
-              }
+            // BGR to RGB and rescale
+            for (int h = 0; h < resize_height; h++) {
+               for (int w = 0; w < resize_width; w++) {
+                  dst[(h*resize_width+w)*3+2] = (resizeRGB->imageData[(h*resize_width+w)*3+0] - 128.0) / 128.0;
+                  dst[(h*resize_width+w)*3+1] = (resizeRGB->imageData[(h*resize_width+w)*3+1] - 128.0) / 128.0;
+                  dst[(h*resize_width+w)*3+0] = (resizeRGB->imageData[(h*resize_width+w)*3+2] - 128.0) / 128.0;
+               }
             }
 
-            datum.SerializeToString(&value);
+            vector<pair<string, Tensor>> inputs = {
+                { "shuffle_batch:0", x}
+            };
+            std::vector<Tensor> outputs;
+            
+            /////////////////////////////// END setup tensorflow input
 
-            for (int i=1; i<=1; i++) {
-               snprintf(key_cstr, kMaxKeyLength, "%08d", i);
-               batch->Put(string(key_cstr), value);
+            session->Run(inputs, {"alexnet_v2/fc8/squeezed:0"}, {}, &outputs);
+              if (!status.ok()) {
+                std::cout << status.ToString() << "\n";
+                return 1;
             }
-            db->Write(leveldb::WriteOptions(), batch);
-            delete batch;
-            batch = new leveldb::WriteBatch();
-            ///////////////////////////// END set caffe input
 
-            /////////////////////////////////////////////////////////// run deep learning CNN for one step to process the image
-            caffe_test_net.ForwardData();
-            const vector<Blob<float>*>& result = caffe_test_net.Forward(dummy_blob_input_vec);  
+            auto result_data = outputs[0].flat<float>().data()  ;
 
-            const float* result_data = result[0]->cpu_data();
 
+            // weird constants are used to normalise targets with different magnitudes, so that CNN can be trained using L2 loss
             ////// get output from cnn
-            angle=(result_data[0]-0.5)*1.1;
+            angle=(result_data[13-0]-0.5)*1.1;
 
-            toMarking_L=(result_data[1]-1.34445)*5.6249;
-            toMarking_M=(result_data[2]-0.39091)*6.8752;
-            toMarking_R=(result_data[3]+0.34445)*5.6249;
+            toMarking_L=(result_data[13-1]-1.34445)*5.6249;
+            toMarking_M=(result_data[13-2]-0.39091)*6.8752;
+            toMarking_R=(result_data[13-3]+0.34445)*5.6249;
 
-            dist_L=(result_data[4]-0.12)*95;
-            dist_R=(result_data[5]-0.12)*95;
+            dist_L=(result_data[13-4]-0.12)*95;
+            dist_R=(result_data[13-5]-0.12)*95;
 
-            toMarking_LL=(result_data[6]-1.48181)*6.8752;
-            toMarking_ML=(result_data[7]-0.98)*6.25;
-            toMarking_MR=(result_data[8]-0.02)*6.25;
-            toMarking_RR=(result_data[9]+0.48181)*6.8752;
+            toMarking_LL=(result_data[13-6]-1.48181)*6.8752;
+            toMarking_ML=(result_data[13-7]-0.98)*6.25;
+            toMarking_MR=(result_data[13-8]-0.02)*6.25;
+            toMarking_RR=(result_data[13-9]+0.48181)*6.8752;
 
-            dist_LL=(result_data[10]-0.12)*95;
-            dist_MM=(result_data[11]-0.12)*95;
-            dist_RR=(result_data[12]-0.12)*95;
+            dist_LL=(result_data[13-10]-0.12)*95;
+            dist_MM=(result_data[13-11]-0.12)*95;
+            dist_RR=(result_data[13-12]-0.12)*95;
 
-            if (result_data[13]>0.5) fast=1;
+            if (result_data[13-13]>0.5) fast=1;
             else fast=0;
+
             /////////////////////////////////////////////////////////// END run deep learning CNN for one step to process the image 
 
             //////////////////////////////////////////////// a controller processes the cnn output and get the optimal steering, acceleration/brake
