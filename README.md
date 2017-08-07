@@ -56,7 +56,7 @@ Following steps should be launched inside Docker container.
 
 To build driver with Tensorflow, one have to download Tensorflow sources with ``get_TF.sh````.
 
-After that, one should come into tensorflow folder, and build corresponding version of driver with:
+After that, one should come into tensorflow folder, and build a driver, for instance, for 3 lane road.
 
 ```bazel build --config=opt --config=cuda //tensorflow/cc/driver:drive_3lane```
 
