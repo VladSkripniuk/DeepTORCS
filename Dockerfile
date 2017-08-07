@@ -50,3 +50,5 @@ RUN cd torcs-1.3.6; \
 ADD modified_tracks /usr/local/share/games/torcs/tracks/road
 
 RUN chmod -R +rwx /usr/local/share/games/torcs/tracks/road/ 
+
+WORKDIR /shared
