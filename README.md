@@ -40,8 +40,11 @@ To visualize, what CNN has learned, one can highlight parts of image, which infl
 Jupyter notebooks for training and evaluating are gathered in ```notebooks``` subfolder:
 
 ```net.ipynb``` - CNN training
+
 ```evaluate.ipynb``` - CNN evaluation on test data
+
 ```progress.ipynb``` - visualize current loss
+
 ```attention.ipynb``` - visualize most influential parts of image
 
 ## How to launch autonomous driving
@@ -57,10 +60,10 @@ After that, one should come into tensorflow folder, and build corresponding vers
 
 ```bazel build --config=opt --config=cuda //tensorflow/cc/driver:drive_3lane```
 
-Next, one should launch ```torcs```, configure players, start quick race and remove extra elements from the screen in accordance to README of the original DeepDriving.
+Next, one should launch ```torcs```, configure players, start quick race and remove extra elements from the screen in accordance to [README](https://github.com/skripniuk/DeepTORCS/blob/master/Readme) of the original DeepDriving.
 
 Finally, driver can be launched with 
 
 ```./bazel-bin/tensorflow/cc/driver/drive_3lane```
 
-and started in accordance to README of the original DeepDriving.
+and started in accordance to [README](https://github.com/skripniuk/DeepTORCS/blob/master/Readme) of the original DeepDriving.
