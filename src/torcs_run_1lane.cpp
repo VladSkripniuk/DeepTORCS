@@ -658,11 +658,6 @@ int main(int argc, char** argv) {
     cvReleaseImage( &legend );
     ////////////////////// END clean up opencv
 
-    ////////////////////// clean up leveldb
-    delete batch;
-    delete db;
-    ////////////////////// END clean up leveldb
-
     ////////////////////// clean up memory sharing
     if(shmdt(shm) == -1)  
     {  
